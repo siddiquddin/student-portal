@@ -1,4 +1,4 @@
-# Nexus University — Full-Stack Student Registration & Academic Portal (MERN Stack)
+# Full-Stack Student Registration & Academic Portal (MERN Stack)
 
 [![Node.js](https://img.shields.io/badge/Node.js-Express-green.svg)](https://nodejs.org)
 [![MongoDB](https://img.shields.io/badge/Database-MongoDB%20Atlas%20%2B%20Mongoose-brightgreen.svg)](https://www.mongodb.com)
