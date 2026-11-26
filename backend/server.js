@@ -1,9 +1,11 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const { connectDB } = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 
 const app = express();
-const PORT = 4005;
+const PORT = process.env.PORT || 4005;
 
 // Middleware
 app.use(cors());
@@ -14,9 +16,17 @@ app.use('/api/auth', authRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', service: 'Student Portal API', time: new Date() });
+  res.json({
+    status: 'OK',
+    service: 'Student Portal API',
+    database: 'MongoDB Atlas',
+    time: new Date()
+  });
 });
 
-app.listen(PORT, () => {
-  console.log(`Student Portal backend running on http://localhost:${PORT}`);
+// Connect to MongoDB Atlas and start server
+connectDB().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Student Portal MERN backend running on http://localhost:${PORT}`);
+  });
 });

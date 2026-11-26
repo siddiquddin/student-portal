@@ -1,362 +1,383 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const db = require('../config/db');
+const Student = require('../models/Student');
+const Course = require('../models/Course');
+const Enrollment = require('../models/Enrollment');
+const Announcement = require('../models/Announcement');
 const { JWT_SECRET } = require('../middleware/auth');
+
+// Helper to format student object consistently
+function formatStudent(student) {
+  return {
+    id: student._id.toString(),
+    fullName: student.fullName,
+    email: student.email,
+    rollNumber: student.rollNumber,
+    department: student.department,
+    gpa: student.gpa,
+    semester: student.semester,
+    status: student.status,
+    avatarUrl: student.avatarUrl,
+    createdAt: student.createdAt
+  };
+}
 
 // 1. Student Registration
 async function registerStudent(req, res) {
-  const { fullName, email, rollNumber, department, password } = req.body;
-
-  if (!fullName || !email || !rollNumber || !department || !password) {
-    return res.status(400).json({ error: 'All fields are required.' });
-  }
-
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
-  }
-
   try {
-    db.get(
-      'SELECT id FROM students WHERE email = ? OR roll_number = ?',
-      [email.toLowerCase().trim(), rollNumber.toUpperCase().trim()],
-      async (err, existing) => {
-        if (err) return res.status(500).json({ error: 'Database error checking existing student.' });
-        if (existing) {
-          return res.status(409).json({ error: 'A student with this Email or Roll Number already exists.' });
-        }
+    const { fullName, email, rollNumber, department, password } = req.body;
 
-        const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(password, salt);
+    if (!fullName || !email || !rollNumber || !department || !password) {
+      return res.status(400).json({ error: 'All fields are required.' });
+    }
 
-        const insertQuery = `
-          INSERT INTO students (full_name, email, roll_number, department, password_hash, gpa, semester, status)
-          VALUES (?, ?, ?, ?, ?, 3.84, 'Spring 2026', 'Active')
-        `;
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+    }
 
-        db.run(
-          insertQuery,
-          [fullName.trim(), email.toLowerCase().trim(), rollNumber.toUpperCase().trim(), department.trim(), passwordHash],
-          function (insertErr) {
-            if (insertErr) {
-              return res.status(500).json({ error: 'Failed to create student account.' });
-            }
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanRoll = rollNumber.toUpperCase().trim();
 
-            const studentId = this.lastID;
-            const token = jwt.sign(
-              { id: studentId, email: email.toLowerCase().trim() },
-              JWT_SECRET,
-              { expiresIn: '24h' }
-            );
+    // Check existing student
+    const existing = await Student.findOne({
+      $or: [{ email: cleanEmail }, { rollNumber: cleanRoll }]
+    });
 
-            // Automatically give 2 starter enrollments
-            db.run(`INSERT OR IGNORE INTO enrollments (student_id, course_id, attendance_percent, grade) VALUES (?, 1, 95, 'A')`, [studentId]);
-            db.run(`INSERT OR IGNORE INTO enrollments (student_id, course_id, attendance_percent, grade) VALUES (?, 2, 92, 'A-')`, [studentId]);
+    if (existing) {
+      return res.status(409).json({ error: 'A student with this Email or Roll Number already exists.' });
+    }
 
-            return res.status(201).json({
-              message: 'Student registered successfully!',
-              token,
-              student: {
-                id: studentId,
-                fullName: fullName.trim(),
-                email: email.toLowerCase().trim(),
-                rollNumber: rollNumber.toUpperCase().trim(),
-                department: department.trim(),
-                gpa: 3.84,
-                semester: 'Spring 2026',
-                status: 'Active'
-              }
-            });
-          }
-        );
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+
+    const newStudent = await Student.create({
+      fullName: fullName.trim(),
+      email: cleanEmail,
+      rollNumber: cleanRoll,
+      department: department.trim(),
+      passwordHash,
+      gpa: 3.84,
+      semester: 'Spring 2026',
+      status: 'Active'
+    });
+
+    // Automatically enroll in starter courses if available
+    const starterCourses = await Course.find().limit(2);
+    if (starterCourses.length > 0) {
+      for (const c of starterCourses) {
+        await Enrollment.create({
+          student: newStudent._id,
+          course: c._id,
+          attendancePercent: 95,
+          grade: 'A'
+        });
+        await Course.findByIdAndUpdate(c._id, { $inc: { enrolledCount: 1 } });
       }
+    }
+
+    const token = jwt.sign(
+      { id: newStudent._id.toString(), email: newStudent.email },
+      JWT_SECRET,
+      { expiresIn: '24h' }
     );
+
+    return res.status(201).json({
+      message: 'Student registered successfully in MongoDB Atlas!',
+      token,
+      student: formatStudent(newStudent)
+    });
   } catch (error) {
+    console.error('Registration error:', error);
     return res.status(500).json({ error: 'Server error during registration.' });
   }
 }
 
 // 2. Student Login
 async function loginStudent(req, res) {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
-  }
-
-  db.get(
-    'SELECT * FROM students WHERE email = ?',
-    [email.toLowerCase().trim()],
-    async (err, student) => {
-      if (err) return res.status(500).json({ error: 'Database query failed.' });
-      if (!student) {
-        return res.status(401).json({ error: 'Invalid student email or password.' });
-      }
-
-      const isMatch = await bcrypt.compare(password, student.password_hash);
-      if (!isMatch) {
-        return res.status(401).json({ error: 'Invalid student email or password.' });
-      }
-
-      const token = jwt.sign(
-        { id: student.id, email: student.email },
-        JWT_SECRET,
-        { expiresIn: '24h' }
-      );
-
-      return res.status(200).json({
-        message: 'Login successful!',
-        token,
-        student: {
-          id: student.id,
-          fullName: student.full_name,
-          email: student.email,
-          rollNumber: student.roll_number,
-          department: student.department,
-          gpa: student.gpa,
-          semester: student.semester,
-          status: student.status,
-          avatarUrl: student.avatar_url
-        }
-      });
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
     }
-  );
+
+    const cleanEmail = email.toLowerCase().trim();
+    const student = await Student.findOne({ email: cleanEmail });
+
+    if (!student) {
+      return res.status(401).json({ error: 'Invalid student email or password.' });
+    }
+
+    const isMatch = await bcrypt.compare(password, student.passwordHash);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid student email or password.' });
+    }
+
+    const token = jwt.sign(
+      { id: student._id.toString(), email: student.email },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    return res.status(200).json({
+      message: 'Login successful!',
+      token,
+      student: formatStudent(student)
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    return res.status(500).json({ error: 'Database query failed.' });
+  }
 }
 
 // 3. Quick Demo Student Login (For Interviewers & Recruiters)
-function demoLogin(req, res) {
-  db.get('SELECT * FROM students WHERE email = ?', ['alex.mercer@campus.edu'], (err, student) => {
-    if (err || !student) {
-      // Fallback: grab first student
-      db.get('SELECT * FROM students LIMIT 1', (err2, firstStudent) => {
-        if (err2 || !firstStudent) {
-          return res.status(404).json({ error: 'No demo student found.' });
-        }
-        sendStudentToken(firstStudent, res);
-      });
-      return;
+async function demoLogin(req, res) {
+  try {
+    let student = await Student.findOne({ email: 'alex.mercer@campus.edu' });
+    if (!student) {
+      student = await Student.findOne();
     }
-    sendStudentToken(student, res);
-  });
-}
 
-function sendStudentToken(student, res) {
-  const token = jwt.sign(
-    { id: student.id, email: student.email },
-    JWT_SECRET,
-    { expiresIn: '24h' }
-  );
-
-  return res.status(200).json({
-    message: 'Demo login successful!',
-    token,
-    student: {
-      id: student.id,
-      fullName: student.full_name,
-      email: student.email,
-      rollNumber: student.roll_number,
-      department: student.department,
-      gpa: student.gpa,
-      semester: student.semester,
-      status: student.status,
-      avatarUrl: student.avatar_url
+    if (!student) {
+      return res.status(404).json({ error: 'No demo student found in database.' });
     }
-  });
+
+    const token = jwt.sign(
+      { id: student._id.toString(), email: student.email },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    return res.status(200).json({
+      message: 'Demo login successful!',
+      token,
+      student: formatStudent(student)
+    });
+  } catch (error) {
+    console.error('Demo login error:', error);
+    return res.status(500).json({ error: 'Server error during demo login.' });
+  }
 }
 
 // 4. Get Student Dashboard Info
-function getStudentDashboard(req, res) {
-  const studentId = req.user.id;
+async function getStudentDashboard(req, res) {
+  try {
+    const studentId = req.user.id;
+    const student = await Student.findById(studentId);
 
-  db.get(
-    'SELECT id, full_name, email, roll_number, department, gpa, semester, status, avatar_url, created_at FROM students WHERE id = ?',
-    [studentId],
-    (err, student) => {
-      if (err || !student) {
-        return res.status(404).json({ error: 'Student not found.' });
-      }
-
-      // Fetch enrolled courses with attendance & grade
-      const enrolledQuery = `
-        SELECT c.id, c.course_code, c.course_name, c.instructor, c.credits, c.schedule, c.department,
-               e.attendance_percent, e.grade, e.enrolled_at
-        FROM enrollments e
-        JOIN courses c ON e.course_id = c.id
-        WHERE e.student_id = ?
-        ORDER BY c.course_code ASC
-      `;
-
-      db.all(enrolledQuery, [studentId], (enrollErr, enrolledCourses) => {
-        const totalCredits = (enrolledCourses || []).reduce((sum, c) => sum + c.credits, 0);
-
-        // Fetch announcements
-        db.all('SELECT * FROM announcements ORDER BY id DESC LIMIT 5', (annErr, notices) => {
-          return res.status(200).json({
-            student: {
-              id: student.id,
-              fullName: student.full_name,
-              email: student.email,
-              rollNumber: student.roll_number,
-              department: student.department,
-              gpa: student.gpa,
-              semester: student.semester,
-              status: student.status,
-              avatarUrl: student.avatar_url,
-              createdAt: student.created_at
-            },
-            enrolledCourses: enrolledCourses || [],
-            totalCredits,
-            announcements: notices || []
-          });
-        });
-      });
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found.' });
     }
-  );
+
+    // Fetch enrollments with populated course
+    const enrollments = await Enrollment.find({ student: studentId }).populate('course');
+
+    const enrolledCourses = enrollments
+      .filter((e) => e.course) // filter out orphaned courses
+      .map((e) => ({
+        id: e.course._id.toString(),
+        course_code: e.course.courseCode,
+        course_name: e.course.courseName,
+        instructor: e.course.instructor,
+        credits: e.course.credits,
+        schedule: e.course.schedule,
+        department: e.course.department,
+        attendance_percent: e.attendancePercent,
+        grade: e.grade,
+        enrolled_at: e.enrolledAt
+      }));
+
+    const totalCredits = enrolledCourses.reduce((sum, c) => sum + c.credits, 0);
+
+    const announcementsDocs = await Announcement.find().sort({ _id: -1 }).limit(5);
+    const announcements = announcementsDocs.map((a) => ({
+      id: a._id.toString(),
+      title: a.title,
+      category: a.category,
+      content: a.content,
+      posted_date: a.postedDate
+    }));
+
+    return res.status(200).json({
+      student: formatStudent(student),
+      enrolledCourses,
+      totalCredits,
+      announcements
+    });
+  } catch (error) {
+    console.error('Dashboard error:', error);
+    return res.status(500).json({ error: 'Failed to fetch dashboard data.' });
+  }
 }
 
 // 5. Course Catalog (Browse with enrollment status)
-function getAllCourses(req, res) {
-  const studentId = req.user.id;
+async function getAllCourses(req, res) {
+  try {
+    const studentId = req.user.id;
+    const allCourses = await Course.find().sort({ courseCode: 1 });
+    const studentEnrollments = await Enrollment.find({ student: studentId }).select('course');
 
-  const query = `
-    SELECT c.*, 
-           CASE WHEN e.id IS NOT NULL THEN 1 ELSE 0 END as is_enrolled
-    FROM courses c
-    LEFT JOIN enrollments e ON c.id = e.course_id AND e.student_id = ?
-    ORDER BY c.course_code ASC
-  `;
+    const enrolledIds = new Set(studentEnrollments.map((e) => e.course.toString()));
 
-  db.all(query, [studentId], (err, rows) => {
-    if (err) return res.status(500).json({ error: 'Failed to fetch course catalog' });
-    res.json(rows);
-  });
+    const formatted = allCourses.map((c) => ({
+      id: c._id.toString(),
+      course_code: c.courseCode,
+      course_name: c.courseName,
+      instructor: c.instructor,
+      credits: c.credits,
+      department: c.department,
+      schedule: c.schedule,
+      capacity: c.capacity,
+      enrolled_count: c.enrolledCount,
+      is_enrolled: enrolledIds.has(c._id.toString()) ? 1 : 0
+    }));
+
+    return res.status(200).json(formatted);
+  } catch (error) {
+    console.error('Course catalog error:', error);
+    return res.status(500).json({ error: 'Failed to fetch course catalog.' });
+  }
 }
 
 // 6. Enroll in a Course Facility
-function enrollInCourse(req, res) {
-  const studentId = req.user.id;
-  const { courseId } = req.body;
+async function enrollInCourse(req, res) {
+  try {
+    const studentId = req.user.id;
+    const { courseId } = req.body;
 
-  if (!courseId) return res.status(400).json({ error: 'Course ID is required.' });
+    if (!courseId) {
+      return res.status(400).json({ error: 'Course ID is required.' });
+    }
 
-  // Check current total credits
-  const creditCheckQuery = `
-    SELECT SUM(c.credits) as total_credits
-    FROM enrollments e
-    JOIN courses c ON e.course_id = c.id
-    WHERE e.student_id = ?
-  `;
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found.' });
+    }
 
-  db.get(creditCheckQuery, [studentId], (err, creditRow) => {
-    const currentCredits = creditRow?.total_credits || 0;
+    // Check if already enrolled
+    const alreadyEnrolled = await Enrollment.findOne({ student: studentId, course: courseId });
+    if (alreadyEnrolled) {
+      return res.status(409).json({ error: 'You are already enrolled in this course.' });
+    }
 
-    // Check course details
-    db.get('SELECT * FROM courses WHERE id = ?', [courseId], (courseErr, course) => {
-      if (courseErr || !course) return res.status(404).json({ error: 'Course not found.' });
+    // Calculate current total credits
+    const enrollments = await Enrollment.find({ student: studentId }).populate('course');
+    const currentCredits = enrollments.reduce((sum, e) => sum + (e.course ? e.course.credits : 0), 0);
 
-      if (currentCredits + course.credits > 18) {
-        return res.status(400).json({
-          error: `Credit limit exceeded! Enrolling would total ${currentCredits + course.credits} credits (Maximum permitted: 18 credits).`
-        });
-      }
+    if (currentCredits + course.credits > 18) {
+      return res.status(400).json({
+        error: `Credit limit exceeded! Enrolling would total ${currentCredits + course.credits} credits (Maximum permitted: 18 credits).`
+      });
+    }
 
-      if (course.enrolled_count >= course.capacity) {
-        return res.status(400).json({ error: 'Course has reached maximum capacity.' });
-      }
+    if (course.enrolledCount >= course.capacity) {
+      return res.status(400).json({ error: 'Course has reached maximum capacity.' });
+    }
 
-      // Insert enrollment
-      db.run(
-        'INSERT INTO enrollments (student_id, course_id, attendance_percent, grade) VALUES (?, ?, 95, "In Progress")',
-        [studentId, courseId],
-        function (enrollErr) {
-          if (enrollErr) {
-            return res.status(409).json({ error: 'You are already enrolled in this course.' });
-          }
-
-          // Update enrolled count
-          db.run('UPDATE courses SET enrolled_count = enrolled_count + 1 WHERE id = ?', [courseId]);
-
-          return res.status(201).json({
-            message: `Successfully registered for ${course.course_code} - ${course.course_name}!`,
-            courseId
-          });
-        }
-      );
+    // Create enrollment
+    await Enrollment.create({
+      student: studentId,
+      course: courseId,
+      attendancePercent: 95,
+      grade: 'In Progress'
     });
-  });
+
+    // Increment enrolled count
+    await Course.findByIdAndUpdate(courseId, { $inc: { enrolledCount: 1 } });
+
+    return res.status(201).json({
+      message: `Successfully registered for ${course.courseCode} - ${course.courseName}!`,
+      courseId
+    });
+  } catch (error) {
+    console.error('Enroll error:', error);
+    return res.status(500).json({ error: 'Failed to enroll in course.' });
+  }
 }
 
 // 7. Drop a Course Facility
-function dropCourse(req, res) {
-  const studentId = req.user.id;
-  const courseId = req.params.courseId;
+async function dropCourse(req, res) {
+  try {
+    const studentId = req.user.id;
+    const courseId = req.params.courseId;
 
-  db.run(
-    'DELETE FROM enrollments WHERE student_id = ? AND course_id = ?',
-    [studentId, courseId],
-    function (err) {
-      if (err || this.changes === 0) {
-        return res.status(400).json({ error: 'Unable to drop course or not enrolled.' });
-      }
+    const deleted = await Enrollment.findOneAndDelete({ student: studentId, course: courseId });
 
-      db.run('UPDATE courses SET enrolled_count = MAX(0, enrolled_count - 1) WHERE id = ?', [courseId]);
-      return res.status(200).json({ message: 'Course successfully dropped.' });
+    if (!deleted) {
+      return res.status(400).json({ error: 'Unable to drop course or not enrolled.' });
     }
-  );
+
+    await Course.findByIdAndUpdate(courseId, { $inc: { enrolledCount: -1 } });
+
+    return res.status(200).json({ message: 'Course successfully dropped.' });
+  } catch (error) {
+    console.error('Drop error:', error);
+    return res.status(500).json({ error: 'Failed to drop course.' });
+  }
 }
 
 // 8. Update Student Profile
-function updateStudentProfile(req, res) {
-  const studentId = req.user.id;
-  const { department, fullName, avatarUrl } = req.body;
+async function updateStudentProfile(req, res) {
+  try {
+    const studentId = req.user.id;
+    const { department, fullName, avatarUrl } = req.body;
 
-  db.run(
-    `UPDATE students SET 
-       department = COALESCE(?, department), 
-       full_name = COALESCE(?, full_name),
-       avatar_url = COALESCE(?, avatar_url)
-     WHERE id = ?`,
-    [department ? department.trim() : null, fullName ? fullName.trim() : null, avatarUrl || null, studentId],
-    function (err) {
-      if (err) return res.status(500).json({ error: 'Failed to update student profile.' });
-      return res.status(200).json({ message: 'Profile updated successfully!' });
+    const updateFields = {};
+    if (department) updateFields.department = department.trim();
+    if (fullName) updateFields.fullName = fullName.trim();
+    if (avatarUrl) updateFields.avatarUrl = avatarUrl.trim();
+
+    const updated = await Student.findByIdAndUpdate(studentId, updateFields, { new: true });
+    if (!updated) {
+      return res.status(404).json({ error: 'Student not found.' });
     }
-  );
+
+    return res.status(200).json({
+      message: 'Profile updated successfully!',
+      student: formatStudent(updated)
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    return res.status(500).json({ error: 'Failed to update student profile.' });
+  }
 }
 
-// 9. Get Single Student Profile (For AuthContext validation)
-function getStudentProfile(req, res) {
-  const studentId = req.user.id;
-  db.get(
-    'SELECT id, full_name, email, roll_number, department, gpa, semester, status, avatar_url, created_at FROM students WHERE id = ?',
-    [studentId],
-    (err, student) => {
-      if (err || !student) {
-        return res.status(404).json({ error: 'Student not found.' });
-      }
-      return res.status(200).json({
-        student: {
-          id: student.id,
-          fullName: student.full_name,
-          email: student.email,
-          rollNumber: student.roll_number,
-          department: student.department,
-          gpa: student.gpa,
-          semester: student.semester,
-          status: student.status,
-          avatarUrl: student.avatar_url,
-          createdAt: student.created_at
-        }
-      });
+// 9. Get Single Student Profile
+async function getStudentProfile(req, res) {
+  try {
+    const studentId = req.user.id;
+    const student = await Student.findById(studentId);
+
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found.' });
     }
-  );
+
+    return res.status(200).json({
+      student: formatStudent(student)
+    });
+  } catch (error) {
+    console.error('Profile fetch error:', error);
+    return res.status(500).json({ error: 'Student not found.' });
+  }
 }
 
 // 10. Fetch Announcements
-function getAnnouncements(req, res) {
-  db.all('SELECT * FROM announcements ORDER BY id DESC', (err, rows) => {
-    if (err) return res.status(500).json({ error: 'Failed to load announcements.' });
-    res.json(rows);
-  });
+async function getAnnouncements(req, res) {
+  try {
+    const announcements = await Announcement.find().sort({ _id: -1 });
+    return res.status(200).json(
+      announcements.map((a) => ({
+        id: a._id.toString(),
+        title: a.title,
+        category: a.category,
+        content: a.content,
+        posted_date: a.postedDate
+      }))
+    );
+  } catch (error) {
+    console.error('Announcements error:', error);
+    return res.status(500).json({ error: 'Failed to load announcements.' });
+  }
 }
 
 module.exports = {

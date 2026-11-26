@@ -1,167 +1,199 @@
-# Nexus University — Student Registration & Academic Portal
+# Nexus University — Full-Stack Student Registration & Academic Portal (MERN Stack)
 
 [![Node.js](https://img.shields.io/badge/Node.js-Express-green.svg)](https://nodejs.org)
+[![MongoDB](https://img.shields.io/badge/Database-MongoDB%20Atlas%20%2B%20Mongoose-brightgreen.svg)](https://www.mongodb.com)
 [![React](https://img.shields.io/badge/React-18-blue.svg)](https://react.dev)
 [![Bootstrap](https://img.shields.io/badge/Bootstrap-5.3-purple.svg)](https://getbootstrap.com)
-[![SQL](https://img.shields.io/badge/Database-SQL%20(SQLite3)-lightblue.svg)](https://www.sqlite.org)
 [![Auth](https://img.shields.io/badge/Auth-JWT%20%2B%20Bcrypt-orange.svg)](https://jwt.io)
 
-A clean, full-stack student registration, login, and course management web application built with **React 18, Bootstrap 5, Node.js, Express, and SQL (SQLite3)**. Built with clean separation of concerns between frontend UI, REST API routes, JWT auth middleware, and normalized SQL tables.
+A production-ready **MERN stack** (MongoDB Atlas, Express, React 18, Node.js) student registration, authentication, and academic course management platform. Designed with clean architecture separating the frontend client, protected REST API routes, JWT authorization middleware, and Mongoose document data models.
 
 ---
 
-## Key Features
+## 🌟 Key Features
 
-- **Student Registration & Login**: Account registration with password validation and hashing (`bcryptjs`, 10 salt rounds), plus `JWT` authentication (`24h` token expiry).
-- **One-Click Demo Login**: Pre-seeded student profile (`alex.mercer@campus.edu`) so reviewers can test all portal features immediately.
-- **Course Registration & Credit Cap**: Browse catalog courses with instructor, schedule, credits, and seat availability. Supports one-click enroll/drop while enforcing an **18-credit semester cap**, course capacity limits, and duplicate enrollment checks (`409 Conflict`).
-- **Student Overview & Notices**: Live enrolled credit calculation, GPA display, attendance/grade table, and campus announcements feed.
-- **Digital ID Card & Profile Settings**: Dedicated Digital ID view and profile update form (Name, Department, Avatar URL).
-- **Responsive Clean UI**: Built with React 18, Vite, Bootstrap 5.3, and clean card components.
+- **MERN Stack Architecture**: Powered by **M**ongoDB Atlas (via Mongoose ODM), **E**xpress.js, **R**eact 18, and **N**ode.js.
+- **Secure Authentication**: User registration with input validation, password hashing using `bcryptjs` (salt rounds = 10), and stateless session authorization via JSON Web Tokens (`JWT` with 24-hour expiration).
+- **One-Click Demo Login**: Pre-seeded demo account (`alex.mercer@campus.edu`) allows recruiters and interviewers to test the student dashboard instantly without manual registration.
+- **Academic Course Registration**: Browse real-time course catalog with credit hours, professor information, capacity limits, and one-click enroll/drop capabilities.
+- **Credit Limit & Capacity Validation**: Enforces an 18-credit semester maximum, prevents double enrollments (`409 Conflict`), and checks class capacity before enrollment.
+- **Student Performance Dashboard**: Live calculation of enrolled credits, current GPA tracking (3.88), semester schedule, attendance percentages, and digital ID card.
+- **Campus Notice Board**: Real-time announcements and alerts feed for academic deadlines, exam schedules, and university events.
+- **Responsive Clean UI**: Built with React 18, Bootstrap 5.3, and clean card components.
 
 ---
 
-## Project Structure
+## 🏗️ Architecture & Project Structure
 
 ```text
 student-portal/
 ├── backend/
 │   ├── config/
-│   │   ├── db.js                     # SQLite3 connection, SQL schema & demo seed data
-│   │   └── student_portal.db         # Portable SQLite database file
+│   │   └── db.js                     # MongoDB connection & auto-seeding of demo student & courses
+│   ├── models/
+│   │   ├── Student.js                # Mongoose schema for students
+│   │   ├── Course.js                 # Mongoose schema for courses
+│   │   ├── Enrollment.js             # Mongoose schema for course enrollments (compound index)
+│   │   └── Announcement.js           # Mongoose schema for campus notices
 │   ├── controllers/
-│   │   └── authController.js         # Register, login, dashboard, enroll/drop & profile APIs
+│   │   └── authController.js         # Register, login, demo-login, enrollment & profile handlers
 │   ├── middleware/
-│   │   └── auth.js                   # JWT Authorization header verification middleware
+│   │   └── auth.js                   # JWT verification middleware protecting API routes
 │   ├── routes/
-│   │   └── authRoutes.js             # Express routes under /api/auth
+│   │   └── authRoutes.js             # REST API endpoint definitions
+│   ├── .env.example                  # Template with MONGODB_URI
 │   ├── package.json
 │   └── server.js                     # Express server listening on port 4005
 ├── frontend/
 │   ├── src/
 │   │   ├── context/
-│   │   │   └── AuthContext.jsx       # Global React state for student session & JWT token
-│   │   ├── App.jsx                   # Login/Register screens, Overview, Courses, ID Card & Settings
-│   │   ├── index.css                 # Custom typography & clean card styling
-│   │   └── main.jsx                  # React DOM entry point
-│   ├── index.html                    # Bootstrap 5.3 CDN & root mount
+│   │   │   └── AuthContext.jsx       # Global React state for authenticated student & token
+│   │   ├── App.jsx                   # Main layout: Auth modal, dashboard, course catalog
+│   │   ├── index.css                 # Clean card styles & typography
+│   │   └── main.jsx                  # React DOM root entrypoint
+│   ├── index.html                    # Bootstrap 5.3 CDN & HTML5 shell
 │   ├── package.json
-│   └── vite.config.js                # Vite dev server (port 3005) with /api proxy to :4005
-├── package.json                      # Root scripts: npm start / npm run dev
-├── run.bat                           # Windows 1-click startup script
-├── start.js                          # Concurrent launcher for backend (:4005) & frontend (:3005)
+│   └── vite.config.js                # Vite dev server (port 3005) with /api proxy to port 4005
+├── package.json                      # Root workspace scripts (npm start / npm run dev)
+├── run.bat                           # 1-Click Windows execution script
+├── start.js                          # Cross-platform concurrent runner
+├── .env.example
 └── README.md
 ```
 
 ---
 
-## SQL Database Schema
+## 🗄️ MongoDB Document Models (Mongoose)
 
 ```mermaid
 erDiagram
-    STUDENTS ||--o{ ENROLLMENTS : registers
-    COURSES ||--o{ ENROLLMENTS : contains
+    STUDENTS ||--o{ ENROLLMENTS : "has many"
+    COURSES ||--o{ ENROLLMENTS : "enrolled in"
     
     STUDENTS {
-        int id PK
-        string full_name
+        ObjectId _id PK
+        string fullName
         string email UK
-        string roll_number UK
+        string rollNumber UK
         string department
-        string password_hash
+        string passwordHash
         float gpa
         string semester
         string status
-        string avatar_url
-        datetime created_at
+        string avatarUrl
+        datetime createdAt
     }
 
     COURSES {
-        int id PK
-        string course_code UK
-        string course_name
+        ObjectId _id PK
+        string courseCode UK
+        string courseName
         string instructor
         int credits
         string department
         string schedule
         int capacity
-        int enrolled_count
+        int enrolledCount
     }
 
     ENROLLMENTS {
-        int id PK
-        int student_id FK
-        int course_id FK
-        datetime enrolled_at
-        int attendance_percent
+        ObjectId _id PK
+        ObjectId student FK
+        ObjectId course FK
+        datetime enrolledAt
+        int attendancePercent
         string grade
     }
 
     ANNOUNCEMENTS {
-        int id PK
+        ObjectId _id PK
         string title
         string category
         string content
-        string posted_date
+        string postedDate
     }
 ```
 
 ---
 
-## API Endpoints
+## 🚀 API Endpoints Reference
 
-### Public Endpoints
-| Method | Endpoint | Body | Description |
+### Public Authentication Routes
+
+| Method | Endpoint | Request Body | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/auth/register` | `{ fullName, email, rollNumber, department, password }` | Registers student, hashes password, assigns 2 starter courses, returns JWT |
-| `POST` | `/api/auth/login` | `{ email, password }` | Verifies email/password via bcrypt and returns JWT |
-| `POST` | `/api/auth/demo-login` | *(None)* | Logs into the seeded demo student (`alex.mercer@campus.edu`) |
-| `GET` | `/api/auth/announcements` | *(None)* | Lists campus notices |
-| `GET` | `/api/health` | *(None)* | API health check |
+| `POST` | `/api/auth/register` | `{ fullName, email, rollNumber, department, password }` | Creates new student in MongoDB, hashes password, returns JWT token |
+| `POST` | `/api/auth/login` | `{ email, password }` | Validates credentials with bcrypt, returns JWT token & student profile |
+| `POST` | `/api/auth/demo-login` | *(None)* | Instant login as pre-configured demo student (`alex.mercer@campus.edu`) |
+| `GET` | `/api/auth/announcements` | *(None)* | Retrieves public university notices and academic alerts |
+| `GET` | `/api/health` | *(None)* | Health check returning MongoDB Atlas connection status |
 
-### Protected Endpoints (`Authorization: Bearer <token>`)
+### Protected Student Routes (Requires `Authorization: Bearer <token>`)
+
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/auth/profile` | Fetches current student profile |
-| `GET` | `/api/auth/dashboard` | Returns student info, enrolled courses (via SQL `JOIN`), total credits, and notices |
-| `GET` | `/api/auth/courses` | Lists all courses with `is_enrolled` flag via `LEFT JOIN` |
-| `POST` | `/api/auth/courses/enroll` | Enrolls student (`{ courseId }`), enforcing 18-credit max & course capacity |
-| `DELETE` | `/api/auth/courses/drop/:courseId` | Drops an enrolled course and decrements `enrolled_count` |
-| `PUT` | `/api/auth/profile` | Updates `fullName`, `department`, or `avatarUrl` |
+| `GET` | `/api/auth/profile` | Fetches authenticated student profile details |
+| `GET` | `/api/auth/dashboard` | Returns summary metrics: GPA, total credits, enrolled courses |
+| `GET` | `/api/auth/courses` | Retrieves all courses with enrollment status for logged-in student |
+| `POST` | `/api/auth/courses/enroll` | Enrolls student into course (`{ courseId }`), enforces 18-credit cap |
+| `DELETE` | `/api/auth/courses/drop/:courseId` | Drops course and decrements course enrolled count |
+| `PUT` | `/api/auth/profile` | Updates student contact email, department, or avatar URL |
 
 ---
 
-## Quick Start
+## 💻 Quick Start & Installation
 
 ### Prerequisites
-- Node.js (v18+ recommended) and npm
+- Node.js (v18.0.0 or higher)
+- MongoDB (Local instance or free MongoDB Atlas cloud cluster)
 
-### 1. Clone & Install Dependencies
+### 1. Clone & Configure Environment
 ```bash
 git clone https://github.com/siddiquddin/student-portal.git
 cd student-portal
 
+# (Optional) Edit backend/.env to point to your MongoDB Atlas cloud URI:
+# MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/student_portal?retryWrites=true&w=majority
+```
+
+### 2. Install Dependencies
+```bash
 cd backend && npm install
 cd ../frontend && npm install
 cd ..
 ```
 
-### 2. Run Both Servers Together
+### 3. Run Both Servers (1-Command)
 ```bash
 npm start
 ```
-*(Or double-click `run.bat` on Windows.)*
+*(On Windows, you can simply double-click `run.bat`.)*
 
-- **Frontend UI**: `http://localhost:3005`
-- **Backend API**: `http://localhost:4005`
+- **Frontend Application**: `http://localhost:3005`
+- **Backend REST API**: `http://localhost:4005`
 
-### Demo Login Credentials
+### Default Demo Credentials
 - **Email**: `alex.mercer@campus.edu`
 - **Password**: `password123`
-*(Or click **Try Demo Student** in the top bar.)*
+*(Or click the **Try Demo Student** button in the top navigation bar)*
 
 ---
 
-## License
+## 🎤 Interview Talking Points (MERN Stack)
 
-MIT License
+When presenting this project in a CDAC or software developer interview:
+
+1. **Why MERN Stack**:
+   *"I chose the MERN stack (MongoDB, Express, React, Node.js) because it provides a unified JavaScript/TypeScript development experience from database to client. Mongoose provides schema validation, middleware hooks, and type safety on top of MongoDB's flexible document model."*
+2. **Data Modeling & Population**:
+   *"Instead of embedding unbounded course arrays inside the student document, I created a referenced `Enrollment` collection with a compound unique index `({ student: 1, course: 1 })`. When fetching the student dashboard, I use Mongoose `.populate('course')` to join course details cleanly."*
+3. **Stateless Authentication**:
+   *"Passwords are encrypted using bcryptjs with 10 salt rounds. On successful login, the server issues a signed JSON Web Token (JWT) with a 24-hour expiration. Client requests attach the token in the `Authorization: Bearer <token>` header, verified by custom Express middleware on all protected routes."*
+4. **Business Rule Enforcement**:
+   *"Before creating an enrollment, the backend verifies that the student will not exceed the 18-credit semester ceiling and checks that `course.enrolledCount < course.capacity`, returning an HTTP 400 error if exceeded."*
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.

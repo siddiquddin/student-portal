@@ -1,7 +1,7 @@
 {
   "name": "student-portal-backend",
   "version": "1.0.0",
-  "description": "Student Registration & Login Portal Backend with SQLite, JWT, and bcryptjs",
+  "description": "Student Registration & Login Portal Backend with MongoDB Atlas, Mongoose, JWT, and bcryptjs",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -10,8 +10,9 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
-    "sqlite3": "^5.1.7"
+    "mongoose": "^8.2.0"
   }
 }
