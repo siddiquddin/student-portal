@@ -1,0 +1,9 @@
+{
+  "name": "student-portal",
+  "version": "1.0.0",
+  "description": "Student Portal - 1-Command Startup",
+  "scripts": {
+    "start": "node start.js",
+    "dev": "node start.js"
+  }
+}
