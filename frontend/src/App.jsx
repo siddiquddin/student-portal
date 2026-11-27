@@ -550,7 +550,7 @@ function MainLayout({ currentTab, setCurrentTab }) {
                   <div className="fw-bold text-dark mb-1"><i className="bi bi-shield-lock-fill text-success me-1"></i> Cryptographic Security Summary</div>
                   <div>&bull; Passwords hashed via <code>bcryptjs</code> with 10 salt rounds before storage.</div>
                   <div>&bull; Sessions governed by signed stateless JSON Web Tokens (JWT).</div>
-                  <div>&bull; Database integrity maintained via SQLite relational constraints.</div>
+                  <div>&bull; Database integrity maintained via MongoDB Atlas document schema constraints.</div>
                 </div>
               </div>
             )}
@@ -559,7 +559,7 @@ function MainLayout({ currentTab, setCurrentTab }) {
       </main>
 
       <footer className="text-center py-3 text-muted small border-top bg-white mt-auto">
-        Nexus CampusPortal &bull; Built with Node.js, Express, SQLite3, and React 18
+        Nexus CampusPortal &bull; MERN Stack Platform Built with MongoDB Atlas, Express, React 18, and Node.js
       </footer>
     </div>
   );
